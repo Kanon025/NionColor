@@ -7,12 +7,16 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { isRawFile, decodeRawFile } from "@/lib/raw/decoder";
 
 interface ImageState {
   file: File | null;
   imageBitmap: ImageBitmap | null;
   fileName: string;
   dimensions: { width: number; height: number };
+  isRaw: boolean;
+  loading: boolean;
+  error: string | null;
 }
 
 interface ImageContextValue extends ImageState {
@@ -25,6 +29,9 @@ const initialState: ImageState = {
   imageBitmap: null,
   fileName: "",
   dimensions: { width: 0, height: 0 },
+  isRaw: false,
+  loading: false,
+  error: null,
 };
 
 const ImageContext = createContext<ImageContextValue | null>(null);
@@ -33,13 +40,47 @@ export function ImageProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ImageState>(initialState);
 
   const loadImage = useCallback(async (file: File) => {
-    const bitmap = await createImageBitmap(file);
-    setState({
-      file,
-      imageBitmap: bitmap,
+    const raw = isRawFile(file);
+
+    setState((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
       fileName: file.name,
-      dimensions: { width: bitmap.width, height: bitmap.height },
-    });
+    }));
+
+    try {
+      let bitmap: ImageBitmap;
+      let width: number;
+      let height: number;
+
+      if (raw) {
+        const decoded = await decodeRawFile(file);
+        bitmap = decoded.imageBitmap;
+        width = decoded.width;
+        height = decoded.height;
+      } else {
+        bitmap = await createImageBitmap(file);
+        width = bitmap.width;
+        height = bitmap.height;
+      }
+
+      setState({
+        file,
+        imageBitmap: bitmap,
+        fileName: file.name,
+        dimensions: { width, height },
+        isRaw: raw,
+        loading: false,
+        error: null,
+      });
+    } catch (e) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: e instanceof Error ? e.message : "Failed to load image",
+      }));
+    }
   }, []);
 
   const clearImage = useCallback(() => {

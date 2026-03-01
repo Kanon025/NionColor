@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ["libraw-wasm"],
+  turbopack: {},
 };
 
 export default nextConfig;
