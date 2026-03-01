@@ -1,14 +1,18 @@
 "use client";
 
 import { useRef } from "react";
-import { FolderOpen, RotateCcw } from "lucide-react";
+import { FolderOpen, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useImageContext } from "@/contexts/ImageContext";
 import { useEditContext } from "@/contexts/EditContext";
 
+// File input accept string: standard images + common RAW extensions
+const FILE_ACCEPT =
+  "image/jpeg,image/png,.arw,.srf,.sr2,.cr2,.cr3,.crw,.nef,.nrw,.raf,.dng,.orf,.pef,.rw2,.rwl,.srw,.3fr,.fff,.iiq,.x3f,.erf,.mef,.mos,.dcr,.kdc,.mrw,.gpr";
+
 export function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { fileName, loadImage } = useImageContext();
+  const { fileName, loadImage, loading, isRaw } = useImageContext();
   const { resetAll } = useEditContext();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -21,9 +25,17 @@ export function Toolbar() {
 
   return (
     <header className="h-12 flex items-center justify-between px-4 bg-card border-b border-border shrink-0">
-      <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
-        {fileName || "NionColor"}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
+          {fileName || "NionColor"}
+        </span>
+        {loading && <Loader2 className="size-3.5 text-muted-foreground animate-spin" />}
+        {isRaw && !loading && (
+          <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            RAW
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
@@ -40,7 +52,7 @@ export function Toolbar() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png"
+          accept={FILE_ACCEPT}
           className="hidden"
           onChange={handleFileChange}
         />

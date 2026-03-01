@@ -2,10 +2,11 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { useEditContext } from "@/contexts/EditContext";
 import { useImageContext } from "@/contexts/ImageContext";
 import { WebGLRenderer } from "@/lib/webgl/renderer";
+import { getRawExtensions } from "@/lib/raw/decoder";
 
 export function Viewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,7 +14,7 @@ export function Viewport() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { params } = useEditContext();
-  const { imageBitmap, loadImage } = useImageContext();
+  const { imageBitmap, loadImage, loading, error } = useImageContext();
 
   const [zoom, setZoom] = useState(1);
   const [panX, setPanX] = useState(0);
@@ -149,9 +150,18 @@ export function Viewport() {
     [loadImage]
   );
 
+  // Build accept map: standard images + all RAW extensions
+  const rawAccept = Object.fromEntries(
+    getRawExtensions().map((ext) => [`image/x-${ext}`, [`.${ext}`]])
+  );
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "image/jpeg": [], "image/png": [] },
+    accept: {
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/png": [".png"],
+      ...rawAccept,
+    },
     noClick: !!imageBitmap,
     noKeyboard: true,
     multiple: false,
@@ -174,7 +184,18 @@ export function Viewport() {
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
       />
-      {!imageBitmap && (
+      {loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none z-10">
+          <Loader2 className="size-8 text-muted-foreground animate-spin" />
+          <p className="text-sm text-muted-foreground">Decoding RAW file...</p>
+        </div>
+      )}
+      {error && !loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none z-10">
+          <p className="text-sm text-destructive">{error}</p>
+        </div>
+      )}
+      {!imageBitmap && !loading && !error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
           <div
             className={`flex flex-col items-center gap-3 p-8 rounded-xl border-2 border-dashed transition-colors ${
@@ -189,7 +210,7 @@ export function Viewport() {
                 Drop an image here
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                or click to browse (JPEG, PNG)
+                or click to browse (RAW, JPEG, PNG)
               </p>
             </div>
           </div>
