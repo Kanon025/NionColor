@@ -11,9 +11,13 @@ uniform sampler2D uTexture;
 uniform mat3 uTransform; // zoom/pan transform matrix
 
 void main() {
+  // Flip Y: ImageBitmap stores top-to-bottom, GL framebuffers are bottom-to-top.
+  // The pipeline preserves the source orientation, so we flip here for screen display.
+  vec2 screenUV = vec2(vUV.x, 1.0 - vUV.y);
+
   // Apply inverse transform to UV coordinates
   // uTransform maps from canvas space to texture space
-  vec3 transformed = uTransform * vec3(vUV, 1.0);
+  vec3 transformed = uTransform * vec3(screenUV, 1.0);
   vec2 uv = transformed.xy;
 
   // Check if UV is out of bounds — render transparent/dark outside image
