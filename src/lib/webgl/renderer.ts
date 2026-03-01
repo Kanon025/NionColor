@@ -58,7 +58,7 @@ export class WebGLRenderer {
     if (!this.sourceTexture) throw new Error('Failed to create source texture');
 
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -143,6 +143,10 @@ export class WebGLRenderer {
       0, s, 0,    // column 1
       tx, ty, 1,  // column 2
     ]);
+  }
+
+  hasImage(): boolean {
+    return this.sourceTexture !== null && this.imageWidth > 0;
   }
 
   getImageDimensions(): { width: number; height: number } {

@@ -80,11 +80,20 @@ export interface DecodedRawImage {
   metadata: LibRawMetadata;
 }
 
+// libraw-wasm imageData() returns either a Uint8Array directly or
+// an object { width, height, data } depending on the version/build.
+// We normalize this in extractPixelData().
+interface LibRawImageResult {
+  width?: number;
+  height?: number;
+  data?: Uint8Array | Uint8ClampedArray | ArrayBuffer;
+}
+
 // LibRaw interface matching the runtime module loaded from /libraw/index.js
 interface LibRawInstance {
   open(data: Uint8Array, settings?: Record<string, unknown>): Promise<void>;
   metadata(fullOutput?: boolean): Promise<LibRawMetadata>;
-  imageData(): Promise<Uint8Array>;
+  imageData(): Promise<Uint8Array | LibRawImageResult>;
 }
 
 interface LibRawModule {
@@ -106,6 +115,44 @@ async function getLibRaw(): Promise<LibRawInstance> {
 
   librawInstance = new mod.default();
   return librawInstance;
+}
+
+/**
+ * Extract a Uint8Array of pixel data from whatever imageData() returns.
+ * Handles: Uint8Array, ArrayBuffer, { data: Uint8Array|ArrayBuffer }, etc.
+ */
+function extractPixelData(result: Uint8Array | LibRawImageResult): Uint8Array {
+  // Already a typed array with indexed access
+  if (result instanceof Uint8Array) return result;
+  if (result instanceof Uint8ClampedArray) return new Uint8Array(result.buffer, result.byteOffset, result.byteLength);
+
+  // Object with .data property (e.g. { width, height, data })
+  if (typeof result === "object" && result !== null) {
+    const obj = result as LibRawImageResult;
+
+    if (obj.data) {
+      if (obj.data instanceof Uint8Array) return obj.data;
+      if (obj.data instanceof Uint8ClampedArray) return new Uint8Array(obj.data.buffer, obj.data.byteOffset, obj.data.byteLength);
+      if (obj.data instanceof ArrayBuffer) return new Uint8Array(obj.data);
+    }
+
+    // Some builds return the raw ArrayBuffer at the top level
+    if (result instanceof ArrayBuffer) return new Uint8Array(result);
+
+    // Last resort: check if it's array-like (has numeric indices and length)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyResult = result as any;
+    if (typeof anyResult.length === "number" && anyResult.length > 0) {
+      // Copy numeric-indexed data into a proper Uint8Array
+      const arr = new Uint8Array(anyResult.length);
+      for (let i = 0; i < anyResult.length; i++) {
+        arr[i] = anyResult[i];
+      }
+      return arr;
+    }
+  }
+
+  throw new Error(`Cannot extract pixel data from imageData() result: ${typeof result}`);
 }
 
 export async function decodeRawFile(
@@ -131,23 +178,44 @@ export async function decodeRawFile(
   await raw.open(data, settings);
 
   const metadata = await raw.metadata();
-  const rgbPixels = await raw.imageData();
+  const rawResult = await raw.imageData();
 
-  // Convert RGB (3 channels) to RGBA (4 channels) for ImageData
+  // Normalize the result: imageData() may return a Uint8Array directly
+  // or an object { width, height, data } depending on the libraw-wasm version.
+  const pixels = extractPixelData(rawResult);
+
+  // Use dimensions from metadata (authoritative)
   const width = metadata.width;
   const height = metadata.height;
   const pixelCount = width * height;
-  const rgba = new Uint8ClampedArray(pixelCount * 4);
+  const expectedRGB = pixelCount * 3;
+  const expectedRGBA = pixelCount * 4;
 
-  for (let i = 0; i < pixelCount; i++) {
-    rgba[i * 4] = rgbPixels[i * 3];         // R
-    rgba[i * 4 + 1] = rgbPixels[i * 3 + 1]; // G
-    rgba[i * 4 + 2] = rgbPixels[i * 3 + 2]; // B
-    rgba[i * 4 + 3] = 255;                    // A
+  // Determine if pixels are RGB (3ch) or RGBA (4ch)
+  let imageBitmap: ImageBitmap;
+
+  if (pixels.length === expectedRGBA) {
+    // Already RGBA — use directly
+    const clamped = new Uint8ClampedArray(pixels.length);
+    clamped.set(pixels);
+    const imageData = new ImageData(clamped, width, height);
+    imageBitmap = await createImageBitmap(imageData);
+  } else if (pixels.length === expectedRGB) {
+    // RGB → RGBA conversion
+    const rgba = new Uint8ClampedArray(expectedRGBA);
+    for (let i = 0; i < pixelCount; i++) {
+      rgba[i * 4] = pixels[i * 3];         // R
+      rgba[i * 4 + 1] = pixels[i * 3 + 1]; // G
+      rgba[i * 4 + 2] = pixels[i * 3 + 2]; // B
+      rgba[i * 4 + 3] = 255;                // A
+    }
+    const imageData = new ImageData(rgba, width, height);
+    imageBitmap = await createImageBitmap(imageData);
+  } else {
+    throw new Error(
+      `Unexpected pixel data size: ${pixels.length} bytes for ${width}x${height} image (expected ${expectedRGB} RGB or ${expectedRGBA} RGBA)`
+    );
   }
-
-  const imageData = new ImageData(rgba, width, height);
-  const imageBitmap = await createImageBitmap(imageData);
 
   return {
     imageBitmap,

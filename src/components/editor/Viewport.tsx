@@ -7,11 +7,12 @@ import { useEditContext } from "@/contexts/EditContext";
 import { useImageContext } from "@/contexts/ImageContext";
 import { WebGLRenderer } from "@/lib/webgl/renderer";
 import { getRawExtensions } from "@/lib/raw/decoder";
+import type { EditParameters } from "@/types/edit-parameters";
 
 export function Viewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const { params } = useEditContext();
   const { imageBitmap, loadImage, loading, error } = useImageContext();
@@ -22,6 +23,10 @@ export function Viewport() {
   const isPanningRef = useRef(false);
   const spaceDownRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
+
+  // Keep a ref to latest params so ResizeObserver can use them
+  const paramsRef = useRef<EditParameters>(params);
+  paramsRef.current = params;
 
   // Initialize renderer
   useEffect(() => {
@@ -42,6 +47,44 @@ export function Viewport() {
     };
   }, []);
 
+  // Resize canvas — helper function
+  const resizeCanvas = useCallback(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+
+    const dpr = devicePixelRatio;
+    const pw = Math.round(width * dpr);
+    const ph = Math.round(height * dpr);
+
+    if (canvas.width === pw && canvas.height === ph) return;
+
+    canvas.width = pw;
+    canvas.height = ph;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    if (rendererRef.current && rendererRef.current.hasImage()) {
+      rendererRef.current.render(paramsRef.current);
+    }
+  }, []);
+
+  // ResizeObserver — stable, no reactive deps
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Set initial size
+    resizeCanvas();
+
+    const observer = new ResizeObserver(() => resizeCanvas());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [resizeCanvas]);
+
   // Load image into renderer
   useEffect(() => {
     if (rendererRef.current && imageBitmap) {
@@ -49,8 +92,11 @@ export function Viewport() {
       setZoom(1);
       setPanX(0);
       setPanY(0);
+      // Ensure canvas is sized and render immediately
+      resizeCanvas();
+      rendererRef.current.render(paramsRef.current);
     }
-  }, [imageBitmap]);
+  }, [imageBitmap, resizeCanvas]);
 
   // Re-render on param or transform changes
   useEffect(() => {
@@ -59,27 +105,6 @@ export function Viewport() {
       rendererRef.current.render(params);
     }
   }, [params, imageBitmap, zoom, panX, panY]);
-
-  // Resize canvas
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      canvas.width = width * devicePixelRatio;
-      canvas.height = height * devicePixelRatio;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      if (rendererRef.current && imageBitmap) {
-        rendererRef.current.render(params);
-      }
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [imageBitmap, params]);
 
   // Wheel zoom
   const handleWheel = useCallback(
@@ -167,11 +192,23 @@ export function Viewport() {
     multiple: false,
   });
 
+  // Merge containerRef with dropzone ref
+  const { ref: dropzoneRef, ...rootProps } = getRootProps();
+  const mergedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      if (typeof dropzoneRef === "function") {
+        dropzoneRef(node);
+      }
+    },
+    [dropzoneRef]
+  );
+
   return (
     <div
-      ref={containerRef}
+      ref={mergedRef}
       className="relative flex-1 h-full overflow-hidden bg-background"
-      {...getRootProps()}
+      {...rootProps}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
