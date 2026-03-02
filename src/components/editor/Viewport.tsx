@@ -7,9 +7,16 @@ import { useEditContext } from "@/contexts/EditContext";
 import { useImageContext } from "@/contexts/ImageContext";
 import { WebGLRenderer } from "@/lib/webgl/renderer";
 import { getRawExtensions } from "@/lib/raw/decoder";
+import { computeHistogram, type HistogramData } from "@/lib/webgl/histogram";
+import { Histogram, type HistogramMode } from "@/components/editor/Histogram";
 import type { EditParameters } from "@/types/edit-parameters";
 
-export function Viewport() {
+interface ViewportProps {
+  histogramMode: HistogramMode;
+  onCycleHistogram: () => void;
+}
+
+export function Viewport({ histogramMode, onCycleHistogram }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -24,9 +31,38 @@ export function Viewport() {
   const spaceDownRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
 
+  // Histogram state
+  const [histogramData, setHistogramData] = useState<HistogramData | null>(null);
+  const histogramThrottleRef = useRef<number>(0);
+
   // Keep a ref to latest params so ResizeObserver can use them
   const paramsRef = useRef<EditParameters>(params);
   paramsRef.current = params;
+
+  // Keep a ref to histogramMode so throttled callbacks can read current value
+  const histogramModeRef = useRef<HistogramMode>(histogramMode);
+  histogramModeRef.current = histogramMode;
+
+  /**
+   * Update histogram data from the current canvas.
+   * Throttled: at most once every 200ms.
+   */
+  const updateHistogram = useCallback(() => {
+    if (histogramModeRef.current === "off") return;
+
+    const now = performance.now();
+    if (now - histogramThrottleRef.current < 200) return;
+    histogramThrottleRef.current = now;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const gl = canvas.getContext("webgl2");
+    if (!gl) return;
+
+    const data = computeHistogram(gl, canvas.width, canvas.height);
+    setHistogramData(data);
+  }, []);
 
   // Initialize renderer
   useEffect(() => {
@@ -69,8 +105,9 @@ export function Viewport() {
 
     if (rendererRef.current && rendererRef.current.hasImage()) {
       rendererRef.current.render(paramsRef.current);
+      updateHistogram();
     }
-  }, []);
+  }, [updateHistogram]);
 
   // ResizeObserver — stable, no reactive deps
   useEffect(() => {
@@ -95,16 +132,28 @@ export function Viewport() {
       // Ensure canvas is sized and render immediately
       resizeCanvas();
       rendererRef.current.render(paramsRef.current);
+      // Force immediate histogram update on new image load
+      histogramThrottleRef.current = 0;
+      updateHistogram();
     }
-  }, [imageBitmap, resizeCanvas]);
+  }, [imageBitmap, resizeCanvas, updateHistogram]);
 
   // Re-render on param or transform changes
   useEffect(() => {
     if (rendererRef.current && imageBitmap) {
       rendererRef.current.setTransform(zoom, panX, panY);
       rendererRef.current.render(params);
+      updateHistogram();
     }
-  }, [params, imageBitmap, zoom, panX, panY]);
+  }, [params, imageBitmap, zoom, panX, panY, updateHistogram]);
+
+  // Recompute histogram when mode changes from off to on
+  useEffect(() => {
+    if (histogramMode !== "off" && rendererRef.current && imageBitmap) {
+      histogramThrottleRef.current = 0;
+      updateHistogram();
+    }
+  }, [histogramMode, imageBitmap, updateHistogram]);
 
   // Wheel zoom
   const handleWheel = useCallback(
@@ -220,6 +269,11 @@ export function Viewport() {
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
+      />
+      <Histogram
+        data={histogramData}
+        mode={histogramMode}
+        onCycleMode={onCycleHistogram}
       />
       {loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none z-10">
