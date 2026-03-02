@@ -91,7 +91,7 @@ export function ChatPanel({
   if (!isOpen) return null;
 
   return (
-    <div className="flex flex-col border-t border-border bg-zinc-900 shrink-0" style={{ height: "280px" }}>
+    <div className="absolute bottom-0 left-0 right-72 flex flex-col border-t border-border bg-zinc-900 z-20" style={{ height: "280px" }}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800">
         <span className="text-xs font-medium text-zinc-300">

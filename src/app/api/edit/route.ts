@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type { EditParameters } from "@/types/edit-parameters";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) {
+    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  }
+  return _client;
+}
 
 const SYSTEM_PROMPT = `Eres un asistente experto en edición fotográfica profesional integrado en NionColor, un editor de fotos no destructivo. Tu rol es interpretar instrucciones de edición en lenguaje natural (en español o inglés) y traducirlas a ajustes precisos de parámetros.
 
@@ -400,7 +406,7 @@ export async function POST(req: Request) {
       content: `[Parámetros actuales de la foto: ${JSON.stringify(currentParameters)}]\n\nInstrucción del usuario: ${message}`,
     });
 
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: "claude-sonnet-4-5-20250514",
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
