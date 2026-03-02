@@ -130,18 +130,46 @@ export class WebGLRenderer {
 
   private buildTransformMatrix(): Float32Array {
     // Build a 3x3 matrix that maps canvas UV → texture UV
-    // Incorporates zoom and pan
-    // At zoom=1, pan=0: identity
-    // Zoom scales around center, pan offsets
-    const s = 1.0 / this.zoom;
-    const tx = -this.panX * s + 0.5 * (1.0 - s);
-    const ty = -this.panY * s + 0.5 * (1.0 - s);
+    // Incorporates aspect-ratio correction, zoom and pan
+    const canvas = this.canvas!;
+    const canvasAR = canvas.width / canvas.height;
+    const imageAR =
+      this.imageWidth > 0 && this.imageHeight > 0
+        ? this.imageWidth / this.imageHeight
+        : canvasAR;
+
+    // Aspect ratio correction: "contain" the image in the canvas
+    let fitX = 1.0;
+    let fitY = 1.0;
+    if (canvasAR > imageAR) {
+      // Canvas wider than image → pillarbox (bars on sides)
+      fitX = canvasAR / imageAR;
+    } else {
+      // Canvas taller than image → letterbox (bars top/bottom)
+      fitY = imageAR / canvasAR;
+    }
+
+    // Zoom
+    const zInv = 1.0 / this.zoom;
+    const sx = fitX * zInv;
+    const sy = fitY * zInv;
+
+    // Pan: panX/panY are CSS pixel deltas — normalize to UV space
+    const dpr = typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1;
+    const cssW = canvas.width / dpr;
+    const cssH = canvas.height / dpr;
+    const panNX = cssW > 0 ? this.panX / cssW : 0;
+    const panNY = cssH > 0 ? this.panY / cssH : 0;
+
+    // Translation: center + zoom offset + pan
+    const tx = 0.5 * (1.0 - sx) - panNX * fitX * zInv;
+    const ty = 0.5 * (1.0 - sy) - panNY * fitY * zInv;
 
     // Column-major 3x3 matrix
     return new Float32Array([
-      s, 0, 0,    // column 0
-      0, s, 0,    // column 1
-      tx, ty, 1,  // column 2
+      sx, 0, 0,    // column 0
+      0, sy, 0,    // column 1
+      tx, ty, 1,   // column 2
     ]);
   }
 
