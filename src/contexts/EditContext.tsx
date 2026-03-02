@@ -14,12 +14,14 @@ import {
 
 type EditAction =
   | { type: "UPDATE_PARAMETER"; section: string; key: string; value: number }
+  | { type: "UPDATE_SECTION"; section: keyof EditParameters; value: Record<string, unknown> }
   | { type: "RESET_ALL" }
   | { type: "RESET_SECTION"; section: keyof EditParameters };
 
 interface EditContextValue {
   params: EditParameters;
   updateParameter: (section: string, key: string, value: number) => void;
+  updateSection: (section: keyof EditParameters, value: Record<string, unknown>) => void;
   resetAll: () => void;
   resetSection: (section: keyof EditParameters) => void;
 }
@@ -31,12 +33,35 @@ function editReducer(state: EditParameters, action: EditAction): EditParameters 
     case "UPDATE_PARAMETER": {
       const section = action.section as keyof EditParameters;
       const current = state[section];
+
+      // Support dot-notation keys for nested objects (e.g. "red.hue" for hsl.red.hue)
+      if (action.key.includes(".")) {
+        const [subKey, prop] = action.key.split(".");
+        const subObj = (current as unknown as Record<string, Record<string, unknown>>)[subKey] ?? {};
+        return {
+          ...state,
+          [section]: {
+            ...(current as unknown as Record<string, unknown>),
+            [subKey]: {
+              ...subObj,
+              [prop]: action.value,
+            },
+          },
+        };
+      }
+
       return {
         ...state,
         [section]: {
           ...(current as unknown as Record<string, unknown>),
           [action.key]: action.value,
         },
+      };
+    }
+    case "UPDATE_SECTION": {
+      return {
+        ...state,
+        [action.section]: action.value,
       };
     }
     case "RESET_ALL":
@@ -67,6 +92,13 @@ export function EditProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const updateSection = useCallback(
+    (section: keyof EditParameters, value: Record<string, unknown>) => {
+      dispatch({ type: "UPDATE_SECTION", section, value });
+    },
+    []
+  );
+
   const resetAll = useCallback(() => {
     dispatch({ type: "RESET_ALL" });
   }, []);
@@ -76,7 +108,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <EditContext value={{ params, updateParameter, resetAll, resetSection }}>
+    <EditContext value={{ params, updateParameter, updateSection, resetAll, resetSection }}>
       {children}
     </EditContext>
   );

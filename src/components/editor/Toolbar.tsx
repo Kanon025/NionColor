@@ -5,12 +5,18 @@ import { FolderOpen, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useImageContext } from "@/contexts/ImageContext";
 import { useEditContext } from "@/contexts/EditContext";
+import { ChatToggle } from "@/components/editor/ChatPanel";
 
 // File input accept string: standard images + common RAW extensions
 const FILE_ACCEPT =
   "image/jpeg,image/png,.arw,.srf,.sr2,.cr2,.cr3,.crw,.nef,.nrw,.raf,.dng,.orf,.pef,.rw2,.rwl,.srw,.3fr,.fff,.iiq,.x3f,.erf,.mef,.mos,.dcr,.kdc,.mrw,.gpr";
 
-export function Toolbar() {
+interface ToolbarProps {
+  onToggleChat: () => void;
+  isChatOpen: boolean;
+}
+
+export function Toolbar({ onToggleChat, isChatOpen }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { fileName, loadImage, loading, isRaw } = useImageContext();
   const { resetAll } = useEditContext();
@@ -49,6 +55,8 @@ export function Toolbar() {
           <RotateCcw className="size-4" />
           <span className="text-xs">Reset</span>
         </Button>
+        <div className="w-px h-5 bg-border mx-1" />
+        <ChatToggle onClick={onToggleChat} isOpen={isChatOpen} />
         <input
           ref={fileInputRef}
           type="file"
