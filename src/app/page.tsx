@@ -21,14 +21,14 @@ export default function EditorPage() {
               onToggleChat={() => setIsChatOpen((v) => !v)}
               isChatOpen={isChatOpen}
             />
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 overflow-hidden relative">
               <Viewport />
               <SliderPanel />
+              <ChatPanel
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+              />
             </div>
-            <ChatPanel
-              isOpen={isChatOpen}
-              onClose={() => setIsChatOpen(false)}
-            />
           </div>
         </ChatProvider>
       </ImageProvider>

@@ -86,13 +86,15 @@ export function SliderControl({
           </span>
         )}
       </div>
-      <Slider
-        min={min}
-        max={max}
-        step={step}
-        value={[value]}
-        onValueChange={([v]) => onChange(v)}
-      />
+      <div onDoubleClick={handleReset}>
+        <Slider
+          min={min}
+          max={max}
+          step={step}
+          value={[value]}
+          onValueChange={([v]) => onChange(v)}
+        />
+      </div>
     </div>
   );
 }
